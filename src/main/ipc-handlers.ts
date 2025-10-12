@@ -1,10 +1,15 @@
 import { ipcMain } from 'electron';
+import { createHash } from 'crypto';
 import { AudioCaptureService } from './audio-capture';
 import { transcribeAudio } from './transcription';
 import { analyzeSentiment } from './sentiment';
 import { generateAdvice, generateSummary } from './gpt-advice';
-import { createSession, addInsight, endSession, getSessions } from './database';
+import { createSession, addInsight, endSession, getSessions, createUser, loginUser, getAuthState, clearAuthState } from './database';
 import { resizeToSummary, resizeToCompact, getMainWindow } from './window';
+
+function hashPassword(password: string): string {
+  return createHash('sha256').update(password).digest('hex');
+}
 
 let currentSessionId: number | null = null;
 let audioService: AudioCaptureService | null = null;
@@ -14,7 +19,6 @@ let chunkCount = 0;
 
 export function registerIpcHandlers(): void {
   ipcMain.handle('start-session', async () => {
-    console.log('📝 Starting new session...');
     currentSessionId = createSession();
     audioBuffer = [];
     fullTranscript = '';
@@ -32,7 +36,6 @@ export function registerIpcHandlers(): void {
         audioBuffer = [];
         chunkCount = 0;
         
-        console.log('🎤 Processing audio chunk...');
         const text = await transcribeAudio(audioData);
         
         if (text && text.trim()) {
@@ -60,7 +63,6 @@ export function registerIpcHandlers(): void {
     });
     
     audioService.on('silence-detected', async () => {
-      console.log('🔇 Silence detected, ending session...');
       const result = await handleSessionEnd();
       const mainWindow = getMainWindow();
       if (mainWindow && result) {
@@ -68,8 +70,8 @@ export function registerIpcHandlers(): void {
       }
     });
     
-    audioService.on('error', (error) => {
-      console.error('Audio service error:', error);
+    audioService.on('error', () => {
+      // Silent error handling
     });
     
     await audioService.startRecording();
@@ -77,7 +79,6 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('stop-session', async () => {
-    console.log('⏹️ Stopping session...');
     return await handleSessionEnd();
   });
 
@@ -87,6 +88,39 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('resize-to-compact', () => {
     resizeToCompact();
+  });
+
+  // Simple local auth handlers
+  ipcMain.handle('auth-sign-up', async (_, email: string, password: string) => {
+    try {
+      const passwordHash = hashPassword(password);
+      createUser(email, passwordHash);
+      return { success: true };
+    } catch (error: any) {
+      throw new Error('Email already exists');
+    }
+  });
+
+  ipcMain.handle('auth-sign-in', async (_, email: string, password: string) => {
+    const passwordHash = hashPassword(password);
+    const success = loginUser(email, passwordHash);
+    if (!success) {
+      throw new Error('Invalid email or password');
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('auth-sign-out', async () => {
+    clearAuthState();
+    return { success: true };
+  });
+
+  ipcMain.handle('auth-check-state', async () => {
+    const authState = getAuthState();
+    if (authState) {
+      return { authenticated: true, email: authState.email };
+    }
+    return { authenticated: false };
   });
 }
 
@@ -102,7 +136,6 @@ async function handleSessionEnd(): Promise<{
   }
 
   if (currentSessionId && fullTranscript.trim()) {
-    console.log('📊 Generating summary...');
     const summary = await generateSummary(fullTranscript);
     endSession(currentSessionId, fullTranscript, summary);
     

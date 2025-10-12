@@ -17,23 +17,19 @@ if (require('electron-squirrel-startup')) {
 
 // Initialize services when app is ready
 app.on('ready', async () => {
-  console.log('🚀 Insights App starting...');
-  
   // Initialize database
   initializeDatabase();
   
   // Initialize AI services (async, non-blocking)
   initializeGPT();
-  initializeTranscription().catch(console.error);
-  initializeSentiment().catch(console.error);
+  initializeTranscription().catch(() => {});
+  initializeSentiment().catch(() => {});
   
   // Register IPC handlers
   registerIpcHandlers();
   
   // Create window
   createWindow();
-  
-  console.log('✅ App ready');
 });
 
 // Quit when all windows are closed, except on macOS

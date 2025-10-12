@@ -6,12 +6,13 @@ const Container = styled.div`
   height: 460px;
   background: linear-gradient(180deg,#FFED67 0%,rgb(249, 248, 250) 100%);
   border-radius: 0px;
-  padding: 20px;
+  padding: 16px;
   color: black;
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  overflow: hidden;
 `;
 
 const Header = styled.div`
@@ -78,8 +79,19 @@ const AdviceText = styled.div`
   font-style: italic;
 `;
 
+const ButtonContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  padding-bottom: 8px;
+`;
+
+const EmptyButtonContainer = styled.div`
+  display: flex;
+  justify-content: center;
+`;
+
 const Button = styled.button`
-  padding: 12px;
+  padding: 14px 32px;
   background: #ef4444;
   border: none;
   border-radius: 8px;
@@ -88,6 +100,7 @@ const Button = styled.button`
   font-weight: 600;
   font-size: 14px;
   transition: background 0.2s;
+  min-width: 180px;
   
   &:hover {
     background: #dc2626;
@@ -99,10 +112,10 @@ const Button = styled.button`
 `;
 
 const StartButton = styled(Button)`
-  background: #10b981;
+  background:rgb(8, 137, 94);
   
   &:hover {
-    background: #059669;
+    background:rgb(5, 103, 72);
   }
 `;
 
@@ -114,6 +127,7 @@ const EmptyState = styled.div`
   height: 100%;
   opacity: 0.6;
   text-align: center;
+  gap: 24px;
 `;
 
 interface Insight {
@@ -150,23 +164,31 @@ export const CompactView: React.FC<Props> = ({ insights, isRecording, onStart, o
       <InsightsContainer>
         {insights.length === 0 ? (
           <EmptyState>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🎤</div>
             <div>Click Start to begin recording</div>
+            <EmptyButtonContainer>
+              <StartButton onClick={onStart}>Start Recording</StartButton>
+            </EmptyButtonContainer>
           </EmptyState>
         ) : (
-          insights.slice(-3).map((insight, idx) => (
-            <InsightCard key={idx} sentiment={insight.sentiment}>
-              <TranscriptText>{insight.text}</TranscriptText>
-              <AdviceText>💡 {insight.advice}</AdviceText>
-            </InsightCard>
-          ))
+          <>
+            {insights.slice(-3).map((insight, idx) => (
+              <InsightCard key={idx} sentiment={insight.sentiment}>
+                <TranscriptText>{insight.text}</TranscriptText>
+                <AdviceText>💡 {insight.advice}</AdviceText>
+              </InsightCard>
+            ))}
+          </>
         )}
       </InsightsContainer>
       
-      {isRecording ? (
-        <Button onClick={onStop}>Stop Session</Button>
-      ) : (
-        <StartButton onClick={onStart}>Start Recording</StartButton>
+      {insights.length > 0 && (
+        <ButtonContainer>
+          {isRecording ? (
+            <Button onClick={onStop}>Stop Session</Button>
+          ) : (
+            <StartButton onClick={onStart}>Start Recording</StartButton>
+          )}
+        </ButtonContainer>
       )}
     </Container>
   );

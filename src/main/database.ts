@@ -7,14 +7,30 @@ const db = new Database(dbPath);
 
 export function initializeDatabase(): void {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      display_name TEXT,
+      last_login INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS auth_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      user_id TEXT,
+      refresh_token TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
     CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT,
       start_time INTEGER NOT NULL,
       end_time INTEGER,
       transcript TEXT,
       summary TEXT,
       key_points TEXT,
-      action_items TEXT
+      action_items TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
     CREATE TABLE IF NOT EXISTS insights (
@@ -29,7 +45,6 @@ export function initializeDatabase(): void {
 
     CREATE INDEX IF NOT EXISTS idx_sessions_start ON sessions(start_time);
   `);
-  console.log('✓ Database initialized');
 }
 
 export function createSession(): number {
@@ -83,5 +98,55 @@ interface Session {
 export function getSessions(limit = 50): Session[] {
   const stmt = db.prepare('SELECT * FROM sessions ORDER BY start_time DESC LIMIT ?');
   return stmt.all(limit) as Session[];
+}
+
+// Simple auth functions
+export function createUser(email: string, passwordHash: string): void {
+  const stmt = db.prepare(`
+    INSERT INTO users (id, email, display_name, last_login) 
+    VALUES (?, ?, ?, ?)
+  `);
+  const userId = Date.now().toString(); // Simple unique ID
+  stmt.run(userId, email, null, Date.now());
+  
+  // Save password hash
+  const authStmt = db.prepare(`
+    INSERT INTO auth_state (id, user_id, refresh_token) 
+    VALUES (1, ?, ?)
+  `);
+  authStmt.run(userId, passwordHash);
+}
+
+export function loginUser(email: string, passwordHash: string): boolean {
+  const stmt = db.prepare('SELECT id FROM users WHERE email = ?');
+  const user = stmt.get(email) as { id: string } | undefined;
+  
+  if (!user) return false;
+  
+  // Update last login and save session
+  const updateStmt = db.prepare('UPDATE users SET last_login = ? WHERE id = ?');
+  updateStmt.run(Date.now(), user.id);
+  
+  const authStmt = db.prepare(`
+    INSERT OR REPLACE INTO auth_state (id, user_id, refresh_token) 
+    VALUES (1, ?, ?)
+  `);
+  authStmt.run(user.id, passwordHash);
+  
+  return true;
+}
+
+export function getAuthState(): { user_id: string; email: string } | null {
+  const stmt = db.prepare(`
+    SELECT u.id as user_id, u.email 
+    FROM auth_state a 
+    JOIN users u ON a.user_id = u.id 
+    WHERE a.id = 1
+  `);
+  return stmt.get() as { user_id: string; email: string } | null;
+}
+
+export function clearAuthState(): void {
+  db.prepare('DELETE FROM auth_state WHERE id = 1').run();
 }
 

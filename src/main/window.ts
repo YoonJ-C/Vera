@@ -26,7 +26,6 @@ export function createWindow(): BrowserWindow {
   
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
-  mainWindow.webContents.openDevTools(); // Open DevTools to see any errors
   
   return mainWindow;
 }
@@ -36,7 +35,6 @@ export function resizeToSummary(): void {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   mainWindow.setSize(Math.floor(width / 2), Math.floor(height / 2));
   mainWindow.center();
-  console.log('✓ Window resized to summary view');
 }
 
 export function resizeToCompact(): void {
@@ -44,7 +42,6 @@ export function resizeToCompact(): void {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
   mainWindow.setSize(460, 460);
   mainWindow.setPosition(width - 480, 20);
-  console.log('✓ Window resized to compact view');
 }
 
 export function getMainWindow(): BrowserWindow | null {

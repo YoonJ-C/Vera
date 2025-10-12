@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CompactView } from './components/CompactView';
 import { SummaryView } from './components/SummaryView';
+import { LoginScreen } from './components/LoginScreen';
 
 interface Insight {
   text: string;
@@ -38,26 +39,49 @@ declare global {
       resizeToCompact: () => Promise<void>;
       onInsight: (callback: (data: Insight) => void) => void;
       onSessionEnd: (callback: (data: SessionData) => void) => void;
+      signUp: (email: string, password: string) => Promise<{ success: boolean }>;
+      signIn: (email: string, password: string) => Promise<{ success: boolean }>;
+      signOut: () => Promise<{ success: boolean }>;
+      checkAuthState: () => Promise<{ authenticated: boolean }>;
     };
   }
 }
 
 export const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [showSummary, setShowSummary] = useState(false);
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
 
   useEffect(() => {
+    // Check auth state on mount
+    const checkAuth = async () => {
+      try {
+        if (!window.electronAPI) {
+          setIsAuthenticated(false);
+          setIsLoading(false);
+          return;
+        }
+        const result = await window.electronAPI.checkAuthState();
+        setIsAuthenticated(result.authenticated);
+      } catch (error) {
+        setIsAuthenticated(false);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+
     // Listen for insights from main process
     window.electronAPI.onInsight((data: Insight) => {
-      console.log('Received insight:', data);
       setInsights(prev => [...prev, data]);
     });
 
     // Listen for session end
     window.electronAPI.onSessionEnd((data: SessionData) => {
-      console.log('Session ended:', data);
       setSessionData(data);
       setShowSummary(true);
       setIsRecording(false);
@@ -66,20 +90,18 @@ export const App: React.FC = () => {
 
   const startSession = async () => {
     try {
-      console.log('Starting session...');
       await window.electronAPI.startSession();
       setIsRecording(true);
       setInsights([]);
       setShowSummary(false);
       setSessionData(null);
     } catch (error) {
-      console.error('Failed to start session:', error);
+      // Silent fail
     }
   };
 
   const stopSession = async () => {
     try {
-      console.log('Stopping session...');
       const result = await window.electronAPI.stopSession();
       if (result) {
         setSessionData(result);
@@ -87,7 +109,7 @@ export const App: React.FC = () => {
       }
       setIsRecording(false);
     } catch (error) {
-      console.error('Failed to stop session:', error);
+      // Silent fail
     }
   };
 
@@ -98,6 +120,44 @@ export const App: React.FC = () => {
     await window.electronAPI.resizeToCompact();
     await startSession();
   };
+
+  const handleLogin = async (email: string, password: string) => {
+    await window.electronAPI.signIn(email, password);
+    setIsAuthenticated(true);
+  };
+
+  const handleSignUp = async (email: string, password: string) => {
+    await window.electronAPI.signUp(email, password);
+    setIsAuthenticated(true);
+  };
+
+  const handleGoogleSignIn = async () => {
+    throw new Error('Google Sign-In not available');
+  };
+
+  if (isLoading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        backgroundColor: '#f0f0f0' 
+      }}>
+        <div>Loading...</div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <LoginScreen
+        onLogin={handleLogin}
+        onSignUp={handleSignUp}
+        onGoogleSignIn={handleGoogleSignIn}
+      />
+    );
+  }
 
   if (showSummary && sessionData) {
     return (

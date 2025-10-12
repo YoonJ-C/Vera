@@ -13,14 +13,12 @@ let sentimentPipeline: SentimentPipeline | null = null;
 
 export async function initializeSentiment(): Promise<void> {
   try {
-    console.log('Initializing sentiment analysis model...');
     sentimentPipeline = (await pipeline(
       'sentiment-analysis',
       'Xenova/twitter-roberta-base-sentiment-latest'
     )) as SentimentPipeline;
-    console.log('✓ Sentiment analysis initialized');
   } catch (error) {
-    console.error('Failed to initialize sentiment analysis:', error);
+    // Silent fail
   }
 }
 
@@ -39,7 +37,6 @@ export async function analyzeSentiment(text: string): Promise<{
     
     return { label, score };
   } catch (error) {
-    console.error('Sentiment analysis failed:', error);
     return { label: 'neutral', score: 0.5 };
   }
 }

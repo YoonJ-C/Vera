@@ -20,22 +20,16 @@ export async function initializeTranscription(): Promise<void> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (apiKey) {
     openai = new OpenAI({ apiKey });
-    console.log('✓ OpenAI client initialized');
-  } else {
-    console.warn('⚠️ OPENAI_API_KEY not set, API fallback disabled');
   }
 
   // Try to initialize local Whisper (this may take a while on first run)
   try {
-    console.log('Initializing local Whisper model...');
     whisperPipeline = (await pipeline(
       'automatic-speech-recognition',
       'Xenova/whisper-tiny.en'
     )) as WhisperPipeline;
-    console.log('✓ Local Whisper initialized');
   } catch (error) {
-    console.warn('⚠️ Local Whisper failed to initialize:', error);
-    console.log('Will use OpenAI API for transcription');
+    // Silent fail, will use API
   }
 
   isInitializing = false;
@@ -54,11 +48,10 @@ export async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
       const result = await whisperPipeline(audioArray);
       const text = result?.text || '';
       if (text.trim()) {
-        console.log('✓ Local transcription:', text.substring(0, 50) + '...');
         return text;
       }
     } catch (error) {
-      console.warn('Local transcription failed:', error);
+      // Silent fail, will try API
     }
   }
 
@@ -75,10 +68,9 @@ export async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
       });
 
       fs.unlinkSync(tempFile);
-      console.log('✓ API transcription:', response.text.substring(0, 50) + '...');
       return response.text;
     } catch (error) {
-      console.error('API transcription failed:', error);
+      // Silent fail
     }
   }
 

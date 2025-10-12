@@ -4,6 +4,7 @@ Your AI-powered meeting insights companion. A real-time desktop application buil
 
 ## Features
 
+- 🔐 **Firebase Authentication**: Secure email/password and Google OAuth sign-in with persistent login
 - 🎙️ **Real-time Audio Capture**: Records microphone input with automatic silence detection (30s threshold)
 - 🤖 **AI-Powered Transcription**: Local Whisper model with OpenAI API fallback
 - 😊 **Sentiment Analysis**: CardiffNLP sentiment classification (positive/negative/neutral)
@@ -43,10 +44,12 @@ npm install
 2. **Configure environment variables:**
 ```bash
 cp .env.example .env
-# Edit .env and add your OpenAI API key
+# Edit .env and add your OpenAI and Firebase keys
 ```
 
-Get your OpenAI API key from: https://platform.openai.com/api-keys
+**Required:**
+- OpenAI API key: https://platform.openai.com/api-keys
+- Firebase config: See [FIREBASE_SETUP.md](FIREBASE_SETUP.md) for 5-minute setup
 
 3. **Start the development server:**
 ```bash

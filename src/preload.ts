@@ -29,4 +29,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSessionEnd: (callback: (data: SessionEndData) => void) => {
     ipcRenderer.on('session-end', (_, data) => callback(data));
   },
+  // Auth methods
+  signUp: (email: string, password: string) => ipcRenderer.invoke('auth-sign-up', email, password),
+  signIn: (email: string, password: string) => ipcRenderer.invoke('auth-sign-in', email, password),
+  signOut: () => ipcRenderer.invoke('auth-sign-out'),
+  checkAuthState: () => ipcRenderer.invoke('auth-check-state'),
 });

@@ -6,9 +6,6 @@ export function initializeGPT(): void {
   const apiKey = process.env.OPENAI_API_KEY;
   if (apiKey) {
     openai = new OpenAI({ apiKey });
-    console.log('✓ GPT service initialized');
-  } else {
-    console.warn('⚠️ OPENAI_API_KEY not set, GPT features disabled');
   }
 }
 
@@ -36,7 +33,6 @@ export async function generateAdvice(transcript: string): Promise<string> {
 
     return response.choices[0].message.content || 'No advice generated.';
   } catch (error) {
-    console.error('Failed to generate advice:', error);
     return 'Unable to generate advice';
   }
 }
@@ -79,7 +75,6 @@ export async function generateSummary(fullTranscript: string): Promise<{
       actionItems: result.actionItems || [],
     };
   } catch (error) {
-    console.error('Failed to generate summary:', error);
     return {
       summary: 'Unable to generate summary',
       keyPoints: [],
