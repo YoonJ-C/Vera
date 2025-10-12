@@ -33,7 +33,7 @@ export function createWindow(): BrowserWindow {
 export function resizeToSummary(): void {
   if (!mainWindow) return;
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  mainWindow.setSize(Math.floor(width / 2), Math.floor(height / 2));
+  mainWindow.setSize(Math.floor(width / 2), height);
   mainWindow.center();
 }
 

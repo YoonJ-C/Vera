@@ -49,7 +49,7 @@ cp .env.example .env
 
 **Required:**
 - OpenAI API key: https://platform.openai.com/api-keys
-- Firebase config: See [FIREBASE_SETUP.md](FIREBASE_SETUP.md) for 5-minute setup
+- Firebase config: See [FIREBASE_SETUP.md](docs/FIREBASE_SETUP.md) for 5-minute setup
 
 3. **Start the development server:**
 ```bash
