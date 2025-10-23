@@ -54,40 +54,45 @@ export async function initializeTranscription(): Promise<void> {
   isInitializing = false;
 }
 
+// Audio validation - check if audio contains actual speech
+function hasActualSpeech(audioBuffer: Buffer): boolean {
+  const samples = new Int16Array(audioBuffer.length / 2);
+  for (let i = 0; i < samples.length; i++) {
+    samples[i] = audioBuffer.readInt16LE(i * 2);
+  }
+  
+  // Check if audio has sufficient energy
+  let energySum = 0;
+  for (let i = 0; i < samples.length; i++) {
+    energySum += Math.abs(samples[i]);
+  }
+  const averageEnergy = energySum / samples.length;
+  
+  // If average energy is too low, it's likely silence/noise
+  const MIN_SPEECH_ENERGY = 500; // Threshold for actual speech
+  return averageEnergy > MIN_SPEECH_ENERGY;
+}
+
 export async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
   // Validate audio buffer
-  if (!audioBuffer || audioBuffer.length < 1000) {
+  if (!audioBuffer || audioBuffer.length < 2000) {
     console.log('Audio buffer too small, skipping transcription');
     return '';
   }
 
-  // Try local Whisper first
-  if (whisperPipeline) {
-    try {
-      // Convert buffer to array for Xenova/transformers
-      const audioArray = new Float32Array(audioBuffer.length / 2);
-      for (let i = 0; i < audioArray.length; i++) {
-        audioArray[i] = audioBuffer.readInt16LE(i * 2) / 32768.0;
-      }
-      
-      const result = await whisperPipeline(audioArray);
-      const text = result?.text || '';
-      if (text.trim()) {
-        console.log(`✓ Local Whisper: "${text.substring(0, 50)}..."`);
-        return text;
-      }
-    } catch (error) {
-      console.log('Local Whisper failed, trying OpenAI API');
-    }
+  // Check if audio contains actual speech (not just noise)
+  if (!hasActualSpeech(audioBuffer)) {
+    console.log('No speech detected in audio, skipping transcription');
+    return '';
   }
-
-  // Fallback to OpenAI API with improved parameters
+  
+  // Skip local Whisper - go straight to OpenAI for best accuracy
   if (openai) {
     try {
       const tempDir = app.getPath('temp');
       const tempFile = path.join(tempDir, `audio-${Date.now()}.wav`);
       
-      // Create WAV file with proper header
+      // Create WAV file with proper header (use original buffer, not preprocessed)
       const wavHeader = createWavHeader(audioBuffer.length);
       const wavBuffer = Buffer.concat([wavHeader, audioBuffer]);
       fs.writeFileSync(tempFile, wavBuffer);
@@ -97,13 +102,14 @@ export async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
         model: 'whisper-1',
         language: 'en',
         temperature: 0.0,
-        prompt: 'This is a business meeting conversation. Participants are discussing projects, deadlines, and action items.',
+        prompt: 'This is a professional business meeting conversation. Participants are discussing projects, deadlines, action items, and business strategy. Use proper punctuation and capitalization.',
+        response_format: 'verbose_json',
       });
 
       fs.unlinkSync(tempFile);
       
       if (response.text && response.text.trim()) {
-        console.log(`✓ OpenAI Whisper: "${response.text.substring(0, 50)}..."`);
+        console.log(`✓ OpenAI Whisper: "${response.text.substring(0, 60)}..."`);
         return response.text;
       }
     } catch (error) {

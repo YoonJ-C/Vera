@@ -24,7 +24,7 @@ const Header = styled.div`
   gap: 8px;
 `;
 
-const InsightsContainer = styled.div`
+const TranscriptContainer = styled.div`
   flex: 1;
   overflow-y: auto;
   margin-bottom: 16px;
@@ -44,50 +44,42 @@ const InsightsContainer = styled.div`
   }
 `;
 
-const InsightCard = styled.div<{ sentiment: string }>`
-  background: rgba(255, 255, 255, 0.1);
+const TranscriptBox = styled.div`
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 12px;
-  padding: 12px;
-  margin-bottom: 12px;
-  border-left: 4px solid ${props => 
-    props.sentiment === 'positive' ? '#10b981' :
-    props.sentiment === 'negative' ? '#ef4444' : '#6b7280'
-  };
-  animation: slideIn 0.3s ease;
-  
-  @keyframes slideIn {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-`;
-
-const TranscriptText = styled.div`
-  font-size: 16px;
-  margin-bottom: 8px;
-  line-height: 1.4;
-`;
-
-const AdviceText = styled.div`
+  padding: 16px;
+  line-height: 1.6;
   font-size: 14px;
-  opacity: 0.9;
-  font-style: italic;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  min-height: 100%;
+`;
+
+const EmptyState = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  opacity: 0.6;
+  text-align: center;
+  gap: 24px;
+`;
+
+const RecordingIndicator = styled.div`
+  font-size: 48px;
+  animation: pulse 2s ease-in-out infinite;
+  
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
 `;
 
 const ButtonContainer = styled.div`
   display: flex;
   justify-content: center;
   padding-bottom: 8px;
-`;
-
-const EmptyButtonContainer = styled.div`
-  display: flex;
-  justify-content: center;
 `;
 
 const Button = styled.button`
@@ -119,32 +111,14 @@ const StartButton = styled(Button)`
   }
 `;
 
-const EmptyState = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  opacity: 0.6;
-  text-align: center;
-  gap: 24px;
-`;
-
-interface Insight {
-  text: string;
-  sentiment: string;
-  advice: string;
-  timestamp: number;
-}
-
 interface Props {
-  insights: Insight[];
+  liveTranscript: string;
   isRecording: boolean;
   onStart: () => void;
   onStop: () => void;
 }
 
-export const CompactView: React.FC<Props> = ({ insights, isRecording, onStart, onStop }) => {
+export const CompactView: React.FC<Props> = ({ liveTranscript, isRecording, onStart, onStop }) => {
   return (
     <Container>
       <Header>
@@ -156,32 +130,31 @@ export const CompactView: React.FC<Props> = ({ insights, isRecording, onStart, o
         ) : (
           <>
             <span>✨</span>
-            <span>Insights</span>
+            <span>Transcript</span>
           </>
         )}
       </Header>
       
-      <InsightsContainer>
-        {insights.length === 0 ? (
+      <TranscriptContainer>
+        {!liveTranscript && !isRecording ? (
           <EmptyState>
             <div>Click Start to begin recording</div>
-            <EmptyButtonContainer>
-              <StartButton onClick={onStart}>Start Recording</StartButton>
-            </EmptyButtonContainer>
+            <StartButton onClick={onStart}>Start Recording</StartButton>
+          </EmptyState>
+        ) : !liveTranscript && isRecording ? (
+          <EmptyState>
+            <RecordingIndicator>🎙️</RecordingIndicator>
+            <div>Listening...</div>
+            <div style={{ fontSize: '14px', opacity: 0.7 }}>
+              Speak now to see live transcript
+            </div>
           </EmptyState>
         ) : (
-          <>
-            {insights.slice(-3).map((insight, idx) => (
-              <InsightCard key={idx} sentiment={insight.sentiment}>
-                <TranscriptText>{insight.text}</TranscriptText>
-                <AdviceText>💡 {insight.advice}</AdviceText>
-              </InsightCard>
-            ))}
-          </>
+          <TranscriptBox>{liveTranscript}</TranscriptBox>
         )}
-      </InsightsContainer>
+      </TranscriptContainer>
       
-      {insights.length > 0 && (
+      {(liveTranscript || isRecording) && (
         <ButtonContainer>
           {isRecording ? (
             <Button onClick={onStop}>Stop Session</Button>
@@ -193,4 +166,3 @@ export const CompactView: React.FC<Props> = ({ insights, isRecording, onStart, o
     </Container>
   );
 };
-

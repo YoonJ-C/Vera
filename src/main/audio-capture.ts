@@ -1,79 +1,93 @@
 import { EventEmitter } from 'events';
-
-// Note: node-audiorecorder requires sox/rec to be installed on the system
-// macOS: brew install sox
-// Windows: Install from https://sourceforge.net/projects/sox/
-// Linux: sudo apt-get install sox
-
-interface AudioRecorderInstance {
-  start: () => { stream: () => NodeJS.ReadableStream };
-  stop: () => void;
-}
+import { BrowserWindow } from 'electron';
 
 export class AudioCaptureService extends EventEmitter {
-  private recorder: AudioRecorderInstance | null = null;
-  private silenceTimer: NodeJS.Timeout | null = null;
-  private readonly silenceThreshold = 30000; // 30 seconds
   private isRecording = false;
+  private silenceTimer: NodeJS.Timeout | null = null;
+  private readonly silenceThreshold = 60000; // 60 seconds of no speech
+  private lastAudioTime = 0;
+  private speechBuffer: Buffer[] = [];
+  private lastSpeechTime = 0;
+  private readonly pauseThreshold = 2000; // 2 seconds pause = end of sentence
 
-  async startRecording(): Promise<void> {
+  async startRecording(window: BrowserWindow): Promise<void> {
     if (this.isRecording) {
       console.warn('Already recording');
       return;
     }
 
-    try {
-      // Dynamically import to avoid errors if sox is not installed
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const AudioRecorder = require('node-audiorecorder');
+    this.isRecording = true;
+    this.lastAudioTime = Date.now();
+    this.speechBuffer = [];
+    console.log('✓ Audio recording started (silence-based chunking)');
+    
+    // Tell renderer to start capturing audio via Web Audio API
+    window.webContents.send('start-audio-capture');
+  }
+
+  stopRecording(window: BrowserWindow): void {
+    if (!this.isRecording) return;
+    
+    // Process any remaining buffered audio
+    if (this.speechBuffer.length > 0) {
+      const audioData = Buffer.concat(this.speechBuffer);
+      this.emit('audio-chunk', audioData);
+      this.speechBuffer = [];
+    }
+    
+    this.isRecording = false;
+    this.clearSilenceTimer();
+    
+    // Tell renderer to stop capturing
+    window.webContents.send('stop-audio-capture');
+    console.log('✓ Audio recording stopped');
+  }
+
+  handleAudioData(chunk: Buffer): void {
+    // Check for actual audio activity (not just silence/noise)
+    const hasActivity = this.detectAudioActivity(chunk);
+    
+    if (hasActivity) {
+      // Add to speech buffer
+      this.speechBuffer.push(chunk);
+      this.lastSpeechTime = Date.now();
+      this.lastAudioTime = Date.now();
+      this.resetSilenceTimer();
+    } else {
+      // Check if we have a pause (silence after speech)
+      const timeSinceLastSpeech = Date.now() - this.lastSpeechTime;
       
-      this.recorder = new AudioRecorder({
-        program: process.platform === 'win32' ? 'sox' : 'rec',
-        device: null,
-        bits: 16,
-        channels: 1,
-        encoding: 'signed-integer',
-        rate: 16000,
-        type: 'wav',
-        silence: 0,
-      }, console) as AudioRecorderInstance;
-
-      const audioStream = this.recorder.start().stream();
-      this.isRecording = true;
-      
-      audioStream.on('data', (chunk: Buffer) => {
-        this.resetSilenceTimer();
-        this.emit('audio-chunk', chunk);
-      });
-
-      audioStream.on('error', (err: Error) => {
-        console.error('Audio stream error:', err);
-        this.emit('error', err);
-      });
-
-      console.log('✓ Audio recording started');
-    } catch (error) {
-      console.error('Failed to start recording:', error);
-      this.emit('error', error);
+      if (timeSinceLastSpeech >= this.pauseThreshold && this.speechBuffer.length > 0) {
+        // Natural pause detected - process the accumulated speech
+        const audioData = Buffer.concat(this.speechBuffer);
+        console.log(`✓ Sentence boundary detected (${timeSinceLastSpeech}ms pause)`);
+        this.emit('audio-chunk', audioData);
+        this.speechBuffer = [];
+      }
     }
   }
 
-  stopRecording(): void {
-    if (this.recorder) {
-      this.recorder.stop();
-      this.recorder = null;
+  private detectAudioActivity(chunk: Buffer): boolean {
+    // Detect actual speech based on amplitude
+    const threshold = 1000; // Threshold for speech detection
+    let hasActivity = false;
+    
+    for (let i = 0; i < chunk.length - 1; i += 2) {
+      const sample = Math.abs(chunk.readInt16LE(i));
+      if (sample > threshold) {
+        hasActivity = true;
+        break;
+      }
     }
-    this.clearSilenceTimer();
-    this.isRecording = false;
-    console.log('✓ Audio recording stopped');
+    
+    return hasActivity;
   }
 
   private resetSilenceTimer(): void {
     this.clearSilenceTimer();
     this.silenceTimer = setTimeout(() => {
-      console.log('⏱️ Silence detected (30s)');
+      console.log('⏱️ Silence detected (60s of no speech)');
       this.emit('silence-detected');
-      this.stopRecording();
     }, this.silenceThreshold);
   }
 
@@ -84,4 +98,3 @@ export class AudioCaptureService extends EventEmitter {
     }
   }
 }
-

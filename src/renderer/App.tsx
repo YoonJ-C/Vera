@@ -37,8 +37,11 @@ declare global {
       stopSession: () => Promise<SessionData>;
       getHistory: () => Promise<HistorySession[]>;
       resizeToCompact: () => Promise<void>;
-      onInsight: (callback: (data: Insight) => void) => void;
+      onTranscriptUpdate: (callback: (data: { text: string; fullTranscript: string; timestamp: number }) => void) => void;
       onSessionEnd: (callback: (data: SessionData) => void) => void;
+      onStartAudioCapture: (callback: () => void) => void;
+      onStopAudioCapture: (callback: () => void) => void;
+      sendAudioChunk: (audioData: number[]) => Promise<void>;
       signUp: (email: string, password: string) => Promise<{ success: boolean }>;
       signIn: (email: string, password: string) => Promise<{ success: boolean }>;
       signOut: () => Promise<{ success: boolean }>;
@@ -51,7 +54,7 @@ export const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
-  const [insights, setInsights] = useState<Insight[]>([]);
+  const [liveTranscript, setLiveTranscript] = useState<string>('');
   const [showSummary, setShowSummary] = useState(false);
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
 
@@ -75,9 +78,9 @@ export const App: React.FC = () => {
 
     checkAuth();
 
-    // Listen for insights from main process
-    window.electronAPI.onInsight((data: Insight) => {
-      setInsights(prev => [...prev, data]);
+    // Listen for live transcript updates
+    window.electronAPI.onTranscriptUpdate((data: { text: string; fullTranscript: string; timestamp: number }) => {
+      setLiveTranscript(data.fullTranscript);
     });
 
     // Listen for session end
@@ -86,13 +89,78 @@ export const App: React.FC = () => {
       setShowSummary(true);
       setIsRecording(false);
     });
+
+    // Setup Web Audio API for high-quality audio capture
+    let audioContext: AudioContext | null = null;
+    let mediaStream: MediaStream | null = null;
+    let processor: ScriptProcessorNode | null = null;
+
+    window.electronAPI.onStartAudioCapture(async () => {
+      try {
+        // Request high-quality microphone access
+        mediaStream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            channelCount: 1,
+            sampleRate: 16000,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            latency: 0.01, // Low latency
+          } 
+        });
+        
+        audioContext = new AudioContext({ 
+          sampleRate: 16000,
+          latencyHint: 'interactive'
+        });
+        
+        const source = audioContext.createMediaStreamSource(mediaStream);
+        processor = audioContext.createScriptProcessor(4096, 1, 1);
+        
+        processor.onaudioprocess = (e) => {
+          const inputData = e.inputBuffer.getChannelData(0);
+          const int16Data = new Int16Array(inputData.length);
+          
+          // Convert float32 [-1, 1] to int16 [-32768, 32767] with normalization
+          for (let i = 0; i < inputData.length; i++) {
+            const s = Math.max(-1, Math.min(1, inputData[i]));
+            int16Data[i] = s < 0 ? s * 32768 : s * 32767;
+          }
+          
+          // Send audio data to main process
+          window.electronAPI.sendAudioChunk(Array.from(int16Data));
+        };
+        
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        console.log('✓ Web Audio capture started with noise suppression');
+      } catch (error) {
+        console.error('Failed to start audio capture:', error);
+      }
+    });
+
+    window.electronAPI.onStopAudioCapture(() => {
+      if (processor) {
+        processor.disconnect();
+        processor = null;
+      }
+      if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+      }
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+      }
+      console.log('✓ Web Audio capture stopped');
+    });
   }, []);
 
   const startSession = async () => {
     try {
       await window.electronAPI.startSession();
       setIsRecording(true);
-      setInsights([]);
+      setLiveTranscript('');
       setShowSummary(false);
       setSessionData(null);
     } catch (error) {
@@ -115,7 +183,7 @@ export const App: React.FC = () => {
 
   const newSession = async () => {
     setShowSummary(false);
-    setInsights([]);
+    setLiveTranscript('');
     setSessionData(null);
     await window.electronAPI.resizeToCompact();
     await startSession();
@@ -173,7 +241,7 @@ export const App: React.FC = () => {
 
   return (
     <CompactView
-      insights={insights}
+      liveTranscript={liveTranscript}
       isRecording={isRecording}
       onStart={startSession}
       onStop={stopSession}
