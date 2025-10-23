@@ -30,34 +30,45 @@ export function registerIpcHandlers(): void {
       audioBuffer.push(chunk);
       chunkCount++;
       
-      // Process every 5 chunks (~5 seconds of audio at 1 chunk/sec)
-      if (chunkCount >= 5) {
+      // Process every 10 chunks (~10 seconds of audio for better word boundaries)
+      if (chunkCount >= 10) {
         const audioData = Buffer.concat(audioBuffer);
         audioBuffer = [];
         chunkCount = 0;
         
-        const text = await transcribeAudio(audioData);
+        // Calculate audio duration for validation
+        const durationMs = (audioData.length / 2 / 16000) * 1000;
+        console.log(`Processing ${durationMs.toFixed(0)}ms of audio (${audioData.length} bytes)`);
         
-        if (text && text.trim()) {
-          fullTranscript += ` ${text}`;
+        // Only process if we have enough audio (minimum 2 seconds)
+        if (durationMs >= 2000) {
+          const text = await transcribeAudio(audioData);
           
-          const sentiment = await analyzeSentiment(text);
-          const advice = await generateAdvice(text);
-          
-          if (currentSessionId) {
-            addInsight(currentSessionId, text, sentiment.label, advice);
+          if (text && text.trim()) {
+            fullTranscript += ` ${text}`;
+            
+            const sentiment = await analyzeSentiment(text);
+            const advice = await generateAdvice(text);
+            
+            if (currentSessionId) {
+              addInsight(currentSessionId, text, sentiment.label, advice);
+            }
+            
+            // Send to renderer
+            const mainWindow = getMainWindow();
+            if (mainWindow) {
+              mainWindow.webContents.send('insight', {
+                text,
+                sentiment: sentiment.label,
+                advice,
+                timestamp: Date.now(),
+              });
+            }
+          } else {
+            console.log('Skipping blank or invalid transcription');
           }
-          
-          // Send to renderer
-          const mainWindow = getMainWindow();
-          if (mainWindow) {
-            mainWindow.webContents.send('insight', {
-              text,
-              sentiment: sentiment.label,
-              advice,
-              timestamp: Date.now(),
-            });
-          }
+        } else {
+          console.log(`Skipping audio chunk too short: ${durationMs.toFixed(0)}ms`);
         }
       }
     });

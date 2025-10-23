@@ -8,6 +8,25 @@ interface WhisperPipeline {
   (audio: Float32Array): Promise<{ text?: string }>;
 }
 
+// Create proper WAV file header for better audio format
+function createWavHeader(dataLength: number): Buffer {
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + dataLength, 4); // File size - 8
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16); // fmt chunk size
+  header.writeUInt16LE(1, 20); // Audio format (PCM)
+  header.writeUInt16LE(1, 22); // Number of channels (mono)
+  header.writeUInt32LE(16000, 24); // Sample rate
+  header.writeUInt32LE(32000, 28); // Byte rate
+  header.writeUInt16LE(2, 32); // Block align
+  header.writeUInt16LE(16, 34); // Bits per sample
+  header.write('data', 36);
+  header.writeUInt32LE(dataLength, 40);
+  return header;
+}
+
 let openai: OpenAI | null = null;
 let whisperPipeline: WhisperPipeline | null = null;
 let isInitializing = false;
@@ -36,6 +55,12 @@ export async function initializeTranscription(): Promise<void> {
 }
 
 export async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
+  // Validate audio buffer
+  if (!audioBuffer || audioBuffer.length < 1000) {
+    console.log('Audio buffer too small, skipping transcription');
+    return '';
+  }
+
   // Try local Whisper first
   if (whisperPipeline) {
     try {
@@ -48,32 +73,45 @@ export async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
       const result = await whisperPipeline(audioArray);
       const text = result?.text || '';
       if (text.trim()) {
+        console.log(`✓ Local Whisper: "${text.substring(0, 50)}..."`);
         return text;
       }
     } catch (error) {
-      // Silent fail, will try API
+      console.log('Local Whisper failed, trying OpenAI API');
     }
   }
 
-  // Fallback to OpenAI API
+  // Fallback to OpenAI API with improved parameters
   if (openai) {
     try {
       const tempDir = app.getPath('temp');
       const tempFile = path.join(tempDir, `audio-${Date.now()}.wav`);
-      fs.writeFileSync(tempFile, audioBuffer);
+      
+      // Create WAV file with proper header
+      const wavHeader = createWavHeader(audioBuffer.length);
+      const wavBuffer = Buffer.concat([wavHeader, audioBuffer]);
+      fs.writeFileSync(tempFile, wavBuffer);
       
       const response = await openai.audio.transcriptions.create({
         file: fs.createReadStream(tempFile),
         model: 'whisper-1',
+        language: 'en',
+        temperature: 0.0,
+        prompt: 'This is a business meeting conversation. Participants are discussing projects, deadlines, and action items.',
       });
 
       fs.unlinkSync(tempFile);
-      return response.text;
+      
+      if (response.text && response.text.trim()) {
+        console.log(`✓ OpenAI Whisper: "${response.text.substring(0, 50)}..."`);
+        return response.text;
+      }
     } catch (error) {
-      // Silent fail
+      console.error('OpenAI Whisper error:', error);
     }
   }
 
+  console.warn('No transcription service available');
   return '';
 }
 
